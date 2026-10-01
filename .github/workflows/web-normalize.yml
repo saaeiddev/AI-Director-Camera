@@ -1,0 +1,51 @@
+name: Materialize Web PWA
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'web-source/**'
+      - '.github/workflows/web-normalize.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Reconstruct web app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d web-source ]; then
+            echo "Web source already materialized."
+            exit 0
+          fi
+          cat web-source/part*.b64 | tr -d '\n' | base64 -d > /tmp/aidc-web.zip
+          unzip -t /tmp/aidc-web.zip
+          rm -rf web
+          mkdir -p web
+          unzip -q /tmp/aidc-web.zip -d web
+          test -f web/index.html
+          test -f web/app.js
+          test -f web/manifest.webmanifest
+          rm -rf web-source
+
+      - name: Commit web source
+        shell: bash
+        run: |
+          if [ ! -d web ]; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git commit -m "Add iOS-friendly AI Director Camera PWA"
+          git push origin HEAD:main
