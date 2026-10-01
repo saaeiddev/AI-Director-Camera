@@ -36,12 +36,51 @@
     smoothness: 100,
     motionEnabled: false,
     lastMotionMag: 0,
-    activeProjectId: localStorage.getItem('aidc.activeProjectId') || '',
-    projects: JSON.parse(localStorage.getItem('aidc.projects') || '[]'),
+    activeProjectId: safeStorageGet('aidc.activeProjectId', ''),
+    projects: safeJsonParse(safeStorageGet('aidc.projects', '[]'), []),
     lastAnalysis: 0,
     recordingStartedAt: 0,
     zoomCap: null
   };
+
+  function safeStorageGet(key, fallback) {
+    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+  }
+
+  function safeJsonParse(value, fallback) {
+    try { return JSON.parse(value); } catch { return fallback; }
+  }
+
+  function loadScript(src, timeoutMs = 10000) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[data-dynamic-src="${src}"]`);
+      if (existing?.dataset.loaded === '1') return resolve();
+      if (existing) existing.remove();
+
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+      script.dataset.dynamicSrc = src;
+
+      const timer = setTimeout(() => {
+        script.remove();
+        reject(new Error(`Timed out loading ${src}`));
+      }, timeoutMs);
+
+      script.onload = () => {
+        clearTimeout(timer);
+        script.dataset.loaded = '1';
+        resolve();
+      };
+      script.onerror = () => {
+        clearTimeout(timer);
+        script.remove();
+        reject(new Error(`Failed to load ${src}`));
+      };
+      document.head.appendChild(script);
+    });
+  }
 
   function toast(message) {
     const el = $('toast');
@@ -237,12 +276,12 @@
 
   async function enableMotion() {
     try {
-      if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
-        const result = await DeviceOrientationEvent.requestPermission();
+      if (typeof window.DeviceOrientationEvent?.requestPermission === 'function') {
+        const result = await window.DeviceOrientationEvent.requestPermission();
         if (result !== 'granted') throw new Error('Orientation permission denied');
       }
-      if (typeof DeviceMotionEvent?.requestPermission === 'function') {
-        const result = await DeviceMotionEvent.requestPermission();
+      if (typeof window.DeviceMotionEvent?.requestPermission === 'function') {
+        const result = await window.DeviceMotionEvent.requestPermission();
         if (result !== 'granted') throw new Error('Motion permission denied');
       }
       addEventListener('deviceorientation', onOrientation, true);
@@ -275,28 +314,33 @@
   async function ensureDetector() {
     if (state.detector || state.detectorLoading) return;
     state.detectorLoading = true;
-    $('aiStatus').textContent = 'AI model: loading…';
+    $('aiStatus').textContent = 'AI model: loading in background…';
+
     try {
-      const ready = await waitFor(() => window.cocoSsd && window.tf, 12000);
-      if (!ready) throw new Error('AI libraries unavailable');
-      state.detector = await window.cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      if (!window.tf) {
+        await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js', 8000);
+      }
+      if (!window.cocoSsd) {
+        await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js', 8000);
+      }
+
+      if (!window.tf || !window.cocoSsd) throw new Error('AI libraries unavailable');
+
+      state.detector = await Promise.race([
+        window.cocoSsd.load({ base: 'lite_mobilenet_v2' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('AI model timeout')), 12000))
+      ]);
+
       $('aiStatus').textContent = 'AI model: on-device';
     } catch (err) {
-      console.warn(err);
+      console.warn('AI detector fallback:', err);
+      state.detector = null;
+      state.detections = [];
       $('aiStatus').textContent = 'AI model: basic analysis';
+      toast('AI model unavailable — camera works in basic mode.');
     } finally {
       state.detectorLoading = false;
     }
-  }
-
-  function waitFor(test, timeout) {
-    return new Promise(resolve => {
-      const start = performance.now();
-      const timer = setInterval(() => {
-        if (test()) { clearInterval(timer); resolve(true); }
-        else if (performance.now() - start > timeout) { clearInterval(timer); resolve(false); }
-      }, 120);
-    });
   }
 
   async function analyzeFrame(now) {
@@ -508,7 +552,16 @@
 
   function escapeHtml(s='') { return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c])); }
 
-  if ('serviceWorker' in navigator) addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn));
+  if ('serviceWorker' in navigator) {
+    addEventListener('load', async () => {
+      try {
+        const registration = await navigator.serviceWorker.register('./sw.js?v=2');
+        await registration.update();
+      } catch (err) {
+        console.warn('Service worker registration failed:', err);
+      }
+    });
+  }
 
   document.addEventListener('visibilitychange',()=>{
     // iOS can re-prompt after abrupt media suspension; proactively stop tracks when hidden.
