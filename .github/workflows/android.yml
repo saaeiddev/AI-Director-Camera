@@ -53,7 +53,30 @@ jobs:
           sed -i 's/activity-compose:1.13.0/activity-compose:1.11.0/' AI-Director-Camera/app/build.gradle.kts
           sed -i 's/lifecycle-runtime-ktx:2.11.0/lifecycle-runtime-ktx:2.9.4/' AI-Director-Camera/app/build.gradle.kts
           sed -i 's/lifecycle-runtime-compose:2.11.0/lifecycle-runtime-compose:2.9.4/' AI-Director-Camera/app/build.gradle.kts
-          grep -E 'compileSdk|targetSdk|compose-bom|core-ktx|activity-compose|lifecycle-runtime' AI-Director-Camera/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path("AI-Director-Camera/build.gradle.kts")
+          text = root.read_text()
+          needle = '    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false\n'
+          if 'id("com.google.devtools.ksp")' not in text:
+              text = text.replace(
+                  needle,
+                  needle + '    id("com.google.devtools.ksp") version "2.3.10" apply false\n'
+              )
+          root.write_text(text)
+
+          app = Path("AI-Director-Camera/app/build.gradle.kts")
+          text = app.read_text()
+          text = text.replace('    id("com.android.legacy-kapt")\n', '    id("com.google.devtools.ksp")\n')
+          text = text.replace('kapt {\n    correctErrorTypes = true\n}\n\n', '')
+          text = text.replace('    kapt("androidx.room:room-compiler:$room")', '    ksp("androidx.room:room-compiler:$room")')
+          app.write_text(text)
+          PY
+          echo "--- patched root plugins ---"
+          sed -n '1,12p' AI-Director-Camera/build.gradle.kts
+          echo "--- patched app dependencies ---"
+          grep -E 'compileSdk|targetSdk|compose-bom|core-ktx|activity-compose|lifecycle-runtime|devtools.ksp|room-compiler' AI-Director-Camera/app/build.gradle.kts
 
       - name: Build debug APK
         working-directory: AI-Director-Camera
