@@ -1,4 +1,4 @@
-name: Normalize AI Director Camera Source
+name: Build and Release Android APK
 
 on:
   push:
@@ -9,164 +9,92 @@ permissions:
   contents: write
 
 jobs:
-  normalize:
+  build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Normalize repository source tree
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK 36
         shell: bash
         run: |
-          set -euo pipefail
-
-          if [ ! -d source-chunks ]; then
-            echo "Repository source is already normalized."
-            exit 0
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-          rm -rf /tmp/aidirector-src
-          mkdir -p /tmp/aidirector-src
-          cat source-chunks/part*.b64 | base64 -d > /tmp/AI-Director-Camera-Source.zip
-          unzip -t /tmp/AI-Director-Camera-Source.zip
-          unzip -q /tmp/AI-Director-Camera-Source.zip -d /tmp/aidirector-src
-          SRC=/tmp/aidirector-src/AI-Director-Camera
-          test -f "$SRC/app/build.gradle.kts"
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
 
-          sed -i 's/compose-bom:2026.09.00/compose-bom:2025.09.01/' "$SRC/app/build.gradle.kts"
-          sed -i 's/core-ktx:1.19.1/core-ktx:1.17.0/' "$SRC/app/build.gradle.kts"
-          sed -i 's/activity-compose:1.13.0/activity-compose:1.11.0/' "$SRC/app/build.gradle.kts"
-          sed -i 's/lifecycle-runtime-ktx:2.11.0/lifecycle-runtime-ktx:2.9.4/' "$SRC/app/build.gradle.kts"
-          sed -i 's/lifecycle-runtime-compose:2.11.0/lifecycle-runtime-compose:2.9.4/' "$SRC/app/build.gradle.kts"
+      - name: Run pure logic smoke tests
+        shell: bash
+        run: bash scripts/run-logic-tests.sh
 
-          python3 - <<'PY'
-          from pathlib import Path
-          src = Path('/tmp/aidirector-src/AI-Director-Camera')
+      - name: Build debug APK
+        shell: bash
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
 
-          root = src / 'build.gradle.kts'
-          text = root.read_text()
-          text = text.replace(
-              '    id("com.android.legacy-kapt") version "9.4.0" apply false\n',
-              '    id("com.google.devtools.ksp") version "2.3.10" apply false\n'
-          )
-          root.write_text(text)
+      - name: Prepare and verify APK
+        shell: bash
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk AI-Director-Camera.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs AI-Director-Camera.apk
+          sha256sum AI-Director-Camera.apk > AI-Director-Camera.apk.sha256
+          ls -lh AI-Director-Camera.apk AI-Director-Camera.apk.sha256
 
-          app = src / 'app/build.gradle.kts'
-          text = app.read_text()
-          text = text.replace('    id("com.android.legacy-kapt")\n', '    id("com.google.devtools.ksp")\n')
-          text = text.replace('kapt {\n    correctErrorTypes = true\n}\n\n', '')
-          text = text.replace('    kapt("androidx.room:room-compiler:$room")', '    ksp("androidx.room:room-compiler:$room")')
-          app.write_text(text)
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Director-Camera-APK
+          path: |
+            AI-Director-Camera.apk
+            AI-Director-Camera.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
 
-          for name in ['App.kt', 'CameraScreen.kt', 'ProjectsScreen.kt']:
-              p = src / 'app/src/main/java/com/saeid/aidirectorcamera/ui' / name
-              p.write_text(p.read_text().replace('import androidx.compose.foundation.layout.weight\n', ''))
-          PY
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="v0.1.0-mvp"
+          cat > release-notes.md <<'NOTES'
+          ## AI Director Camera v0.1.0 MVP
 
-          rm -rf app docs gradle scripts
-          rm -f .gitignore TEST_RESULTS.txt build.gradle.kts gradle.properties settings.gradle.kts
-          cp -a "$SRC"/. ./
-          rm -rf source-chunks
-          rm -f AI-Director-Camera-Source.zip
+          Native Android cinematography-assistant MVP with CameraX recording, on-device shot guidance, motion analysis, ML Kit pose detection, project storage, and ARCore capability detection.
 
-          cat > README.md <<'EOF'
-          # AI Director Camera
+          ### Included files
+          - `AI-Director-Camera.apk` — debug-signed installable APK
+          - `AI-Director-Camera.apk.sha256` — SHA-256 checksum
 
-          **AI Director Camera** is a native Android cinematography assistant that combines a real CameraX preview/recording pipeline with on-device analysis, shot guidance, motion sensing, project organization, and AR-capability detection.
+          ### Validation
+          - Gradle build passed
+          - Pure Kotlin logic smoke tests passed
+          - APK signature verification passed with `apksigner`
 
-          > Current status: **MVP / development build**. The APK builds successfully in GitHub Actions and is signature-verified. Real-device camera and AR behavior should still be validated on representative Android phones before production use.
+          This is an MVP/development build. Camera and AR behavior still requires real-device QA across representative Android devices.
+          NOTES
 
-          ## Features
-
-          - Real CameraX camera preview and video recording
-          - Front/rear camera switching
-          - Zoom, exposure, torch and tap-to-focus controls
-          - Live frame luminance analysis
-          - ML Kit pose-based subject tracking
-          - Shot Coach guidance and composition scoring
-          - Horizon, pan, tilt, roll and shake analysis using device sensors
-          - Cinematic movement guides such as dolly, tracking and orbit overlays
-          - AI Director shot suggestions using deterministic on-device rules
-          - Storyboard generation from scene keywords
-          - Room database for projects and recorded-shot metadata
-          - ARCore availability detection with graceful fallback
-          - Thermal-aware analysis throttling
-          - Dark cinematic Compose UI
-
-          ## Tech Stack
-
-          Kotlin, Jetpack Compose, CameraX, ML Kit Pose Detection, ARCore, Room, KSP, Kotlin Coroutines, Android sensors, Gradle 9.6 and Android Gradle Plugin 9.4.
-
-          ## Project Structure
-
-          ```text
-          app/src/main/java/com/saeid/aidirectorcamera/
-          ├── ai/          # Live analysis and guidance
-          ├── camera/      # CameraX session and recording
-          ├── data/        # Room entities, DAO and repository
-          ├── director/    # Director and storyboard planning
-          ├── sensors/     # Motion/orientation analysis
-          └── ui/          # Compose screens and theme
-
-          docs/            # Architecture, privacy and QA notes
-          scripts/         # Local build and logic-test helpers
-          .github/         # CI / release automation
-          ```
-
-          ## Build Locally
-
-          Requirements: Android SDK 36, JDK 17, and Gradle 9.6.
-
-          ```bash
-          gradle :app:assembleDebug
-          ```
-
-          APK output:
-
-          ```text
-          app/build/outputs/apk/debug/app-debug.apk
-          ```
-
-          ## Install
-
-          Download **AI-Director-Camera.apk** from the GitHub Releases page, transfer it to an Android phone and install it. Android may ask you to allow installation from the selected source.
-
-          Debug application ID:
-
-          ```text
-          com.saeid.aidirectorcamera.debug
-          ```
-
-          ## Automated Validation
-
-          CI builds the APK from the repository source tree, runs the pure Kotlin smoke tests, verifies the generated APK with `apksigner`, generates SHA-256, uploads a workflow artifact, and publishes the APK to GitHub Releases.
-
-          Hardware-specific CameraX/ARCore behavior and sustained thermal performance still require real-device QA.
-
-          ## Current MVP Limitations
-
-          - Camera movement guidance is screen-space rather than fully world-anchored AR.
-          - Physical ultra-wide/main/telephoto lens enumeration is not implemented yet.
-          - Manual FPS selection is not exposed yet.
-          - AI Director and storyboard planning use deterministic on-device rules rather than a cloud generative-AI service.
-          - Advanced playback analysis and depth-based subject distance are future work.
-
-          ## Documentation
-
-          - [Architecture](docs/ARCHITECTURE.md)
-          - [Implementation Matrix](docs/IMPLEMENTATION_MATRIX.md)
-          - [Device Test Checklist](docs/DEVICE_TEST_CHECKLIST.md)
-          - [Privacy](docs/PRIVACY.md)
-          - [Development Test Results](TEST_RESULTS.txt)
-
-          ## License
-
-          No open-source license has been declared yet. All rights remain with the repository owner unless a license is added later.
-          EOF
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git status --short
-          git commit -m "Normalize Android source tree and documentation"
-          git push origin HEAD:main
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" AI-Director-Camera.apk AI-Director-Camera.apk.sha256 --clobber
+            gh release edit "$TAG" --title "AI Director Camera v0.1.0 MVP" --notes-file release-notes.md
+          else
+            gh release create "$TAG"               AI-Director-Camera.apk               AI-Director-Camera.apk.sha256               --target "$GITHUB_SHA"               --title "AI Director Camera v0.1.0 MVP"               --notes-file release-notes.md
+          fi
