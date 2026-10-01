@@ -90,3 +90,20 @@ Hardware-specific CameraX/ARCore behavior and sustained thermal performance stil
 ## License
 
 No open-source license has been declared yet. All rights remain with the repository owner unless a license is added later.
+
+
+## Web / iOS PWA
+
+An iPhone-friendly Progressive Web App is included under [`web/`](web/).
+
+It provides a real browser camera feed, video recording through MediaRecorder, cinematic composition guides, Shot Coach modes, device-motion horizon/smoothness analysis, live lighting analysis, optional on-device subject detection, Director planning, Storyboard generation, local Projects, and installable PWA behavior.
+
+The web build is designed for Safari on iPhone and is deployed through the dedicated GitHub Pages workflow in `.github/workflows/pages.yml`.
+
+Expected Pages URL after GitHub Pages is enabled for this repository:
+
+```text
+https://saaeiddev.github.io/AI-Director-Camera/
+```
+
+Web APIs do not expose every native CameraX/ARCore capability, so this PWA is intended for iOS/browser testing rather than as a byte-for-byte replacement for the Android APK.
