@@ -26,7 +26,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK 37
+      - name: Install Android SDK 36
         shell: bash
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -35,7 +35,7 @@ jobs:
           fi
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Set up Gradle 9.6
         uses: gradle/actions/setup-gradle@v4
@@ -44,7 +44,10 @@ jobs:
 
       - name: Extract project source
         shell: bash
-        run: unzip -q AI-Director-Camera-Source.zip
+        run: |
+          unzip -q AI-Director-Camera-Source.zip
+          sed -i 's/compileSdk = 37/compileSdk = 36/' AI-Director-Camera/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' AI-Director-Camera/app/build.gradle.kts
 
       - name: Build debug APK
         working-directory: AI-Director-Camera
