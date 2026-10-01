@@ -3,6 +3,10 @@ name: Build and Release Android APK
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+      - '.github/workflows/web-normalize.yml'
   workflow_dispatch:
 
 permissions:
