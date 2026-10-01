@@ -1,0 +1,64 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 37
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-37" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Extract project source
+        shell: bash
+        run: unzip -q AI-Director-Camera-Source.zip
+
+      - name: Build debug APK
+        working-directory: AI-Director-Camera
+        shell: bash
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Prepare final APK
+        shell: bash
+        run: |
+          test -f AI-Director-Camera/app/build/outputs/apk/debug/app-debug.apk
+          cp AI-Director-Camera/app/build/outputs/apk/debug/app-debug.apk AI-Director-Camera.apk
+          sha256sum AI-Director-Camera.apk > AI-Director-Camera.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Director-Camera-APK
+          path: |
+            AI-Director-Camera.apk
+            AI-Director-Camera.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
