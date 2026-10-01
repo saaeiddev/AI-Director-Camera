@@ -73,6 +73,9 @@ jobs:
           text = text.replace('    kapt("androidx.room:room-compiler:$room")', '    ksp("androidx.room:room-compiler:$room")')
           app.write_text(text)
           PY
+          sed -i '/import androidx.compose.foundation.layout.weight/d' AI-Director-Camera/app/src/main/java/com/saeid/aidirectorcamera/ui/App.kt
+          sed -i '/import androidx.compose.foundation.layout.weight/d' AI-Director-Camera/app/src/main/java/com/saeid/aidirectorcamera/ui/CameraScreen.kt
+          sed -i '/import androidx.compose.foundation.layout.weight/d' AI-Director-Camera/app/src/main/java/com/saeid/aidirectorcamera/ui/ProjectsScreen.kt
           echo "--- patched root plugins ---"
           sed -n '1,12p' AI-Director-Camera/build.gradle.kts
           echo "--- patched app dependencies ---"
