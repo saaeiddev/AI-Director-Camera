@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#05070b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AI Director" />
+  <meta name="description" content="AI Director Camera — iPhone-friendly PWA cinematography assistant." />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="stylesheet" href="./styles.css" />
+  <title>AI Director Camera</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <main id="cameraView" class="screen active">
+      <video id="camera" playsinline autoplay muted></video>
+      <canvas id="analysisCanvas" hidden></canvas>
+      <canvas id="overlay"></canvas>
+
+      <div class="camera-hud safe-top">
+        <div class="hud-row">
+          <span class="pill accent">AI DIRECTOR • LIVE</span>
+          <span class="pill" id="qualityPill">—</span>
+        </div>
+        <div class="hud-stack">
+          <span class="pill" id="aiStatus">AI model: standby</span>
+          <span class="pill" id="motionStatus">Motion: off</span>
+          <span class="pill" id="projectStatus">NO PROJECT</span>
+        </div>
+        <div class="guidance glass" id="guidance"><span class="status-dot"></span><span id="guidanceText">Tap START CAMERA to begin.</span></div>
+        <div id="coachChips" class="coach-chips hidden"></div>
+      </div>
+
+      <div class="camera-controls safe-bottom">
+        <div class="slider-panel glass" id="zoomPanel" hidden>
+          <label>ZOOM <span id="zoomLabel">1.0×</span></label>
+          <input id="zoomSlider" type="range" min="1" max="1" step="0.1" value="1" />
+        </div>
+        <div class="capture-row">
+          <button class="round secondary" id="motionBtn" aria-label="Enable motion">MOTION</button>
+          <button class="record" id="recordBtn" aria-label="Record" disabled><span></span></button>
+          <button class="round secondary" id="flipBtn" aria-label="Flip camera" disabled>FLIP</button>
+        </div>
+        <div class="sub-row">
+          <button class="small-btn" id="startBtn">START CAMERA</button>
+          <button class="small-btn" id="torchBtn" hidden>TORCH</button>
+          <button class="small-btn" id="shareLastBtn" disabled>LAST CLIP</button>
+        </div>
+      </div>
+    </main>
+
+    <main id="directorView" class="screen content-screen">
+      <div class="content safe-top safe-bottom">
+        <div class="eyebrow">AI DIRECTOR</div>
+        <h1>Build a shooting plan.</h1>
+        <p class="muted">Offline rule-based direction inspired by the Android app. Your text stays in the browser.</p>
+        <textarea id="directorPrompt" rows="4">Create a dramatic hero shot</textarea>
+        <button class="primary wide" id="buildPlanBtn">Build Shooting Plan</button>
+        <div id="directorPlan" class="cards"></div>
+      </div>
+    </main>
+
+    <main id="coachView" class="screen content-screen">
+      <div class="content safe-top safe-bottom">
+        <div class="eyebrow">SHOT COACH</div>
+        <h1>Pick a shot, then open the camera.</h1>
+        <div id="coachGrid" class="tech-grid"></div>
+        <div class="glass info-card">
+          <strong id="coachTitle">Hero</strong>
+          <p id="coachDescription">Low-angle medium hero framing with controlled movement.</p>
+        </div>
+        <button class="primary wide" id="openCoachCameraBtn">Open Camera with Coach</button>
+      </div>
+    </main>
+
+    <main id="storyboardView" class="screen content-screen">
+      <div class="content safe-top safe-bottom">
+        <div class="eyebrow">STORYBOARD ASSISTANT</div>
+        <h1>Turn a scene into a practical shot list.</h1>
+        <textarea id="scenePrompt" rows="5">A man walks toward his car, opens the door, gets inside and drives away.</textarea>
+        <button class="primary wide" id="storyboardBtn">Generate Shot List</button>
+        <div id="storyboardList" class="cards"></div>
+      </div>
+    </main>
+
+    <main id="projectsView" class="screen content-screen">
+      <div class="content safe-top safe-bottom">
+        <div class="eyebrow">PROJECTS</div>
+        <h1>Keep shot metadata together.</h1>
+        <div class="project-create glass">
+          <input id="projectName" placeholder="Project name" maxlength="48" />
+          <button class="primary" id="createProjectBtn">Create</button>
+        </div>
+        <div id="projectList" class="cards"></div>
+      </div>
+    </main>
+
+    <nav class="tabbar safe-bottom">
+      <button data-view="cameraView" class="active">CAMERA</button>
+      <button data-view="directorView">AI DIRECTOR</button>
+      <button data-view="coachView">SHOT COACH</button>
+      <button data-view="storyboardView">STORYBOARD</button>
+      <button data-view="projectsView">PROJECTS</button>
+    </nav>
+
+    <dialog id="clipDialog">
+      <div class="dialog-body">
+        <div class="eyebrow">RECORDED CLIP</div>
+        <video id="clipPreview" controls playsinline></video>
+        <div class="dialog-actions">
+          <button class="primary" id="shareClipBtn">Share / Save</button>
+          <a class="small-btn link-btn" id="downloadClipBtn" download="AI-Director-Camera.mp4">Download</a>
+          <button class="small-btn" id="closeDialogBtn">Close</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+  </div>
+</body>
+</html>

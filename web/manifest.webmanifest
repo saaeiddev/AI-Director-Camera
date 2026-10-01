@@ -1,0 +1,19 @@
+{
+  "name": "AI Director Camera",
+  "short_name": "AI Director",
+  "description": "iPhone-friendly PWA cinematography assistant with camera, recording, shot coaching, motion guidance and on-device AI subject detection.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#05070b",
+  "theme_color": "#05070b",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
